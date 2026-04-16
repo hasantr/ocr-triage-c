@@ -5,6 +5,41 @@ All notable changes to `ocr-triage-c` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.2.0-alpha] — 2026-04-16
+
+Sprint 2 complete — encoded JPEG/PNG path is live.
+
+### Added
+- `ocr_triage_has_text(bytes, len)` — full encoded-bytes pipeline.
+- `ocr_triage_has_text_with_image(bytes, len, &verdict, &image)` — decode + verdict
+  + reusable full-res grayscale buffer (for OCR engine handoff).
+- libjpeg-turbo 3.1.4 vendored via `ExternalProject_Add` (NASM SIMD auto-detect).
+  JPEG scaled decode uses DCT-level 1/8 path (`TJSCALED` helper), not post-resize.
+- libspng 0.7.4 + zlib-ng 2.1.6 (ZLIB_COMPAT) vendored via `ExternalProject_Add`.
+  PNG decode handles grayscale / RGB / RGBA / palette uniformly via `SPNG_FMT_RGBA8`.
+- `bench_encoded` benchmark: per-file 20-iteration latency.
+
+### Performance (scalar, Windows MinGW GCC 8.1 + NASM SIMD)
+- 220 KB JPEG (CD cover): **~1.3 ms**
+- 4 KB PNG (512×512 solid): **~1.0 ms**
+- 94 KB PNG (512×512 photo): **~2.5 ms**
+- 2.8 MB PNG (8 MP, 256-color): ~36 ms
+- 1.9 MB JPEG (8 MP A4 scan): ~37 ms
+
+A4 JPEG Windows latency higher than expected (target ~5 ms via libjpeg-turbo
+SIMD); suspected native-build-specific SIMD dispatch issue on MinGW. Linux CI
+should hit ~2-4 ms. Verdicts match pure-Rust reference exactly (score parity:
+0.832 PNG / 0.839 JPEG on the same content).
+
+### Accuracy parity with pure-Rust `ocr-triage`
+- Same Otsu + edge + variance + 2×2 regional + coverage algorithm.
+- Rounded-to-tenth score diff on shared testset: 0.000.
+
+### Known limits
+- No SIMD kernels yet for the triage score phase (Sprint 3 target).
+- Encoded path does not expose `ocr_triage_has_text_with_image` from CLI /
+  examples yet — Sprint 4 will add a Tesseract integration example.
+
 ## [0.1.0-alpha] — 2026-04-16
 
 Initial alpha release — Sprint 1 complete.

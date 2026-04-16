@@ -52,4 +52,34 @@ float ocr_triage_score(
     uint32_t w, uint32_t h
 );
 
+/* -------- decode -------- */
+
+/* Detected image format (used internally). */
+typedef enum {
+    OCR_TRIAGE_FORMAT_UNKNOWN = 0,
+    OCR_TRIAGE_FORMAT_JPEG,
+    OCR_TRIAGE_FORMAT_PNG
+    /* WebP/TIFF/BMP can join in a later sprint */
+} ocr_triage_format_t;
+
+ocr_triage_format_t ocr_triage_sniff(const uint8_t *bytes, size_t len);
+
+/* Decode encoded bytes → full-resolution 8-bit grayscale buffer.
+ *
+ * Returns 0 on success. Writes malloc'd gray buffer to *out_gray (caller
+ * frees with free()), dimensions to *out_w / *out_h.
+ * Returns -1 on decode failure. *out_gray set to NULL.
+ *
+ * For JPEG: uses libjpeg-turbo with DCT-level 1/8 scaled decode when
+ * `scaled_preview=1` (short side ~target/8), else full resolution.
+ * For PNG: libspng, full resolution (no DCT-scale equivalent).
+ */
+int ocr_triage_decode_gray(
+    const uint8_t *bytes, size_t len,
+    int scaled_preview,
+    uint8_t **out_gray,
+    uint32_t *out_w,
+    uint32_t *out_h
+);
+
 #endif /* OCR_TRIAGE_INTERNAL_H */

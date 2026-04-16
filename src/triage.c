@@ -4,6 +4,7 @@
 #include "internal.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -109,29 +110,109 @@ ocr_triage_verdict_t ocr_triage_has_text_rgb(
     return v;
 }
 
-/* ---------- Encoded bytes (stub — TODO Sprint 2: libjpeg-turbo + libspng) ---------- */
+/* ---------- Encoded bytes path (JPEG/PNG) ---------- */
 
 ocr_triage_verdict_t ocr_triage_has_text(
     const uint8_t *bytes, size_t len,
-    const ocr_triage_config_t *cfg
+    const ocr_triage_config_t *cfg_in
 ) {
-    (void)bytes;
-    (void)len;
-    (void)cfg;
-    ocr_triage_verdict_t v = {0, 0.0f, 0};
-    return v;  /* Not yet implemented. Use _gray or _rgb for now. */
+    uint64_t t0 = now_us();
+    ocr_triage_config_t cfg = resolve_cfg(cfg_in);
+
+    /* Decode once. JPEG uses DCT 1/8 scaled preview (10-20× speedup),
+     * PNG has no equivalent and goes full-res. */
+    uint8_t *gray = NULL;
+    uint32_t w = 0, h = 0;
+    if (ocr_triage_decode_gray(bytes, len, /* scaled_preview */ 1,
+                               &gray, &w, &h) != 0 || !gray) {
+        return empty_verdict((uint32_t)(now_us() - t0));
+    }
+
+    /* Quality-biased box subsample (decoded pixels may be soft from JPEG). */
+    uint8_t *thumb = (uint8_t *)malloc(OCR_TRIAGE_MAX_THUMB);
+    if (!thumb) {
+        free(gray);
+        return empty_verdict((uint32_t)(now_us() - t0));
+    }
+
+    uint32_t tw = 0, th = 0;
+    int rc = ocr_triage_downsample_box(
+        gray, w, h, cfg.thumbnail_short_edge,
+        thumb, OCR_TRIAGE_MAX_THUMB, &tw, &th
+    );
+    free(gray);
+    if (rc != 0) {
+        free(thumb);
+        return empty_verdict((uint32_t)(now_us() - t0));
+    }
+
+    float score = ocr_triage_score(thumb, tw, th);
+    free(thumb);
+
+    ocr_triage_verdict_t v;
+    v.has_text    = (score >= cfg.threshold) ? 1 : 0;
+    v.score       = score;
+    v.elapsed_us  = (uint32_t)(now_us() - t0);
+    return v;
 }
 
 int ocr_triage_has_text_with_image(
     const uint8_t *bytes, size_t len,
-    const ocr_triage_config_t *cfg,
+    const ocr_triage_config_t *cfg_in,
     ocr_triage_verdict_t *out_verdict,
     ocr_triage_image_t *out_image
 ) {
-    (void)bytes; (void)len; (void)cfg;
-    if (out_verdict) *out_verdict = empty_verdict(0);
-    if (out_image) { out_image->gray = NULL; out_image->width = 0; out_image->height = 0; out_image->stride = 0; }
-    return -1;  /* Not yet implemented */
+    if (!out_verdict || !out_image) return -1;
+    out_image->gray = NULL;
+    out_image->width = out_image->height = out_image->stride = 0;
+
+    uint64_t t0 = now_us();
+    ocr_triage_config_t cfg = resolve_cfg(cfg_in);
+
+    /* Decode full-resolution — caller needs it for OCR engine handoff. */
+    uint8_t *gray = NULL;
+    uint32_t w = 0, h = 0;
+    if (ocr_triage_decode_gray(bytes, len, /* scaled_preview */ 0,
+                               &gray, &w, &h) != 0 || !gray) {
+        *out_verdict = empty_verdict((uint32_t)(now_us() - t0));
+        return -1;
+    }
+
+    /* Thumbnail for scoring (stride subsample — caller's full-res is crisp). */
+    uint8_t *thumb = (uint8_t *)malloc(OCR_TRIAGE_MAX_THUMB);
+    if (!thumb) {
+        free(gray);
+        *out_verdict = empty_verdict((uint32_t)(now_us() - t0));
+        return -1;
+    }
+
+    uint32_t tw = 0, th = 0;
+    int rc = ocr_triage_downsample_stride(
+        gray, w, h, cfg.thumbnail_short_edge,
+        thumb, OCR_TRIAGE_MAX_THUMB, &tw, &th
+    );
+    if (rc != 0) {
+        free(thumb);
+        free(gray);
+        *out_verdict = empty_verdict((uint32_t)(now_us() - t0));
+        return -1;
+    }
+
+    float score = ocr_triage_score(thumb, tw, th);
+    free(thumb);
+
+    ocr_triage_verdict_t v;
+    v.has_text    = (score >= cfg.threshold) ? 1 : 0;
+    v.score       = score;
+    v.elapsed_us  = (uint32_t)(now_us() - t0);
+    *out_verdict = v;
+
+    /* Full-res gray ownership transferred to caller. */
+    out_image->gray   = gray;
+    out_image->width  = w;
+    out_image->height = h;
+    out_image->stride = w;
+    return 0;
 }
 
 void ocr_triage_image_free(ocr_triage_image_t *image) {
