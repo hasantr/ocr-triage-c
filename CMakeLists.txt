@@ -185,6 +185,18 @@ target_include_directories(ocr_triage
     PRIVATE src
 )
 
+# POSIX clock_gettime / struct timespec visibility on Linux.
+if(UNIX AND NOT APPLE)
+    target_compile_definitions(ocr_triage PRIVATE _POSIX_C_SOURCE=199309L)
+endif()
+
+# Auto-export every symbol on MSVC DLL builds so callers don't need
+# __declspec(dllexport) annotations on each function.
+if(WIN32 AND MSVC AND OCR_TRIAGE_BUILD_SHARED)
+    set_target_properties(ocr_triage PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 if(NOT MSVC)
     target_link_libraries(ocr_triage PRIVATE m)
 endif()
