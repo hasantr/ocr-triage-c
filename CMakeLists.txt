@@ -19,6 +19,12 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic -O3 -ffast-math)
 endif()
 
+# POSIX clock_gettime / struct timespec visibility on Linux — applies to
+# lib + all tests, bench, examples. macOS/BSD expose these by default.
+if(UNIX AND NOT APPLE)
+    add_compile_definitions(_POSIX_C_SOURCE=199309L)
+endif()
+
 # ================================================================
 # Options
 # ================================================================
@@ -184,11 +190,6 @@ target_include_directories(ocr_triage
             $<INSTALL_INTERFACE:include>
     PRIVATE src
 )
-
-# POSIX clock_gettime / struct timespec visibility on Linux.
-if(UNIX AND NOT APPLE)
-    target_compile_definitions(ocr_triage PRIVATE _POSIX_C_SOURCE=199309L)
-endif()
 
 # Auto-export every symbol on MSVC DLL builds so callers don't need
 # __declspec(dllexport) annotations on each function.
