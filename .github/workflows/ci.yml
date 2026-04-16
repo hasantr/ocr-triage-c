@@ -37,3 +37,13 @@ jobs:
       - name: Test
         working-directory: build
         run: ctest --output-on-failure -C Release
+
+      - name: Bench (raw path, Unix)
+        if: matrix.os != 'windows-latest'
+        working-directory: build
+        run: ./bench_raw
+
+      - name: Bench (raw path, Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: build
+        run: .\Release\bench_raw.exe

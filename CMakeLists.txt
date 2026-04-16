@@ -177,6 +177,8 @@ set(OCR_TRIAGE_SOURCES
     src/thumbnail.c
     src/score.c
     src/decode.c
+    src/cpu.c
+    src/simd.c
 )
 
 if(OCR_TRIAGE_BUILD_SHARED)

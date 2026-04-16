@@ -252,6 +252,4 @@ const char *ocr_triage_version(void) {
     return "0.1.0";
 }
 
-const char *ocr_triage_cpu_features(void) {
-    return "scalar";  /* SIMD sprint sonrası: "avx2" / "neon" / ... */
-}
+/* ocr_triage_cpu_features() lives in cpu.c now. */

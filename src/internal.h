@@ -42,6 +42,32 @@ void ocr_triage_rgb_to_gray(
     uint8_t *gray
 );
 
+/* -------- CPU feature detection + SIMD dispatch -------- */
+
+typedef struct {
+    int has_sse2;
+    int has_avx2;
+    int has_neon;
+} ocr_triage_cpu_t;
+
+/* Cached singleton; detected on first call. Safe across threads after init. */
+const ocr_triage_cpu_t *ocr_triage_cpu_detect(void);
+
+/* -------- SIMD primitives -------- */
+
+/* Binarize 8-bit grayscale into 0/1 mask.
+ *   `below_is_fg != 0` → pixel <= threshold maps to 1 else 0.
+ *   `below_is_fg == 0` → pixel >  threshold maps to 1 else 0.
+ * Writes n bytes to `dst`. */
+void ocr_triage_binarize(
+    const uint8_t *gray, uint8_t *dst, size_t n,
+    uint8_t threshold, int below_is_fg
+);
+
+/* Sum all bytes of `n`-length buffer — used for foreground coverage count.
+ * Returns uint32 sum. */
+uint32_t ocr_triage_sum_u8(const uint8_t *buf, size_t n);
+
 /* -------- score pipeline -------- */
 
 /* Compute final triage score in [0,1]. Input: downsampled grayscale.
