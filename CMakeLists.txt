@@ -235,6 +235,9 @@ endif()
 if(OCR_TRIAGE_BUILD_CLI)
     add_executable(triage_cli examples/triage_cli.c)
     target_link_libraries(triage_cli PRIVATE ocr_triage)
+
+    add_executable(handoff_demo examples/handoff_demo.c)
+    target_link_libraries(handoff_demo PRIVATE ocr_triage)
 endif()
 
 if(OCR_TRIAGE_BUILD_BENCH)
