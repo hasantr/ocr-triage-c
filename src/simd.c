@@ -191,3 +191,115 @@ uint32_t ocr_triage_sum_u8(const uint8_t *buf, size_t n) {
     (void)c;
     return sum_u8_scalar(buf, n);
 }
+
+/* ============================================================ *
+ * COUNT_TRANSITIONS — 0/1 transitions along a binary row
+ *
+ * edges = count( row[i] != row[i+1] )
+ *
+ * Since row[i] ∈ {0,1}, XOR gives {0,1} → summing the XORed stream
+ * equals the transition count. AVX2: load two unaligned 32-byte
+ * windows offset by 1, XOR, SAD to 4×64-bit accumulator.
+ * ============================================================ */
+
+static uint32_t count_transitions_scalar(const uint8_t *row, size_t len) {
+    if (len < 2) return 0;
+    uint32_t edges = 0;
+    for (size_t x = 0; x + 1 < len; ++x) {
+        if (row[x] != row[x + 1]) edges++;
+    }
+    return edges;
+}
+
+#ifdef OCR_TRIAGE_X86
+#  if defined(__GNUC__) || defined(__clang__)
+__attribute__((target("avx2")))
+#  endif
+static uint32_t count_transitions_avx2(const uint8_t *row, size_t len) {
+    if (len < 2) return 0;
+    size_t x = 0;
+    const size_t pair_count = len - 1;   /* number of (row[i], row[i+1]) pairs */
+    __m256i acc = _mm256_setzero_si256();
+    const __m256i zero = _mm256_setzero_si256();
+
+    for (; x + 32 <= pair_count; x += 32) {
+        __m256i a = _mm256_loadu_si256((const __m256i *)(row + x));
+        __m256i b = _mm256_loadu_si256((const __m256i *)(row + x + 1));
+        __m256i d = _mm256_xor_si256(a, b);            /* 0/1 per byte */
+        __m256i sad = _mm256_sad_epu8(d, zero);        /* 4×u64 partial sums */
+        acc = _mm256_add_epi64(acc, sad);
+    }
+    uint64_t tmp[4];
+    _mm256_storeu_si256((__m256i *)tmp, acc);
+    uint32_t total = (uint32_t)(tmp[0] + tmp[1] + tmp[2] + tmp[3]);
+
+    /* Scalar tail. */
+    for (; x + 1 < len; ++x) {
+        if (row[x] != row[x + 1]) total++;
+    }
+    return total;
+}
+
+#  if defined(__GNUC__) || defined(__clang__)
+__attribute__((target("sse2")))
+#  endif
+static uint32_t count_transitions_sse2(const uint8_t *row, size_t len) {
+    if (len < 2) return 0;
+    size_t x = 0;
+    const size_t pair_count = len - 1;
+    __m128i acc = _mm_setzero_si128();
+    const __m128i zero = _mm_setzero_si128();
+
+    for (; x + 16 <= pair_count; x += 16) {
+        __m128i a = _mm_loadu_si128((const __m128i *)(row + x));
+        __m128i b = _mm_loadu_si128((const __m128i *)(row + x + 1));
+        __m128i d = _mm_xor_si128(a, b);
+        __m128i sad = _mm_sad_epu8(d, zero);           /* 2×u64 partial sums */
+        acc = _mm_add_epi64(acc, sad);
+    }
+    uint64_t tmp[2];
+    _mm_storeu_si128((__m128i *)tmp, acc);
+    uint32_t total = (uint32_t)(tmp[0] + tmp[1]);
+
+    for (; x + 1 < len; ++x) {
+        if (row[x] != row[x + 1]) total++;
+    }
+    return total;
+}
+#endif
+
+#ifdef OCR_TRIAGE_AARCH64
+static uint32_t count_transitions_neon(const uint8_t *row, size_t len) {
+    if (len < 2) return 0;
+    size_t x = 0;
+    const size_t pair_count = len - 1;
+    uint32x4_t acc = vdupq_n_u32(0);
+    for (; x + 16 <= pair_count; x += 16) {
+        uint8x16_t a = vld1q_u8(row + x);
+        uint8x16_t b = vld1q_u8(row + x + 1);
+        uint8x16_t d = veorq_u8(a, b);          /* 0/1 per byte */
+        /* vpaddlq_u8: pairwise add u8→u16 ×8, then chain to u16→u32. */
+        uint16x8_t s16 = vpaddlq_u8(d);
+        uint32x4_t s32 = vpaddlq_u16(s16);
+        acc = vaddq_u32(acc, s32);
+    }
+    uint32_t total = vaddvq_u32(acc);
+    for (; x + 1 < len; ++x) {
+        if (row[x] != row[x + 1]) total++;
+    }
+    return total;
+}
+#endif
+
+uint32_t ocr_triage_count_transitions(const uint8_t *row, size_t len) {
+    const ocr_triage_cpu_t *c = ocr_triage_cpu_detect();
+#ifdef OCR_TRIAGE_X86
+    if (c->has_avx2) return count_transitions_avx2(row, len);
+    if (c->has_sse2) return count_transitions_sse2(row, len);
+#endif
+#ifdef OCR_TRIAGE_AARCH64
+    if (c->has_neon) return count_transitions_neon(row, len);
+#endif
+    (void)c;
+    return count_transitions_scalar(row, len);
+}

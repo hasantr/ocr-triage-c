@@ -68,6 +68,11 @@ void ocr_triage_binarize(
  * Returns uint32 sum. */
 uint32_t ocr_triage_sum_u8(const uint8_t *buf, size_t n);
 
+/* Count 0/1 transitions along a binary row of `len` elements
+ * (len should be ≥ 1; returns 0 if len < 2). Each element expected
+ * to be 0 or 1. SIMD-accelerated where available. */
+uint32_t ocr_triage_count_transitions(const uint8_t *row, size_t len);
+
 /* -------- score pipeline -------- */
 
 /* Compute final triage score in [0,1]. Input: downsampled grayscale.

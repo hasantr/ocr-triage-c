@@ -71,9 +71,7 @@ static float horizontal_edge_density_block(
     uint32_t edges = 0;
     for (uint32_t yy = 0; yy < h; ++yy) {
         const uint8_t *row = bin + (size_t)(y0 + yy) * stride + x0;
-        for (uint32_t x = 0; x + 1 < w; ++x) {
-            if (row[x] != row[x + 1]) edges++;
-        }
+        edges += ocr_triage_count_transitions(row, w);
     }
     uint32_t total = (w - 1) * h;
     float raw = (float)edges / (float)(total ? total : 1);
