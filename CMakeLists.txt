@@ -199,7 +199,9 @@ if(WIN32 AND MSVC AND OCR_TRIAGE_BUILD_SHARED)
 endif()
 
 if(NOT MSVC)
-    target_link_libraries(ocr_triage PRIVATE m)
+    # PUBLIC so downstream executables (tests, bench, CLI) also link libm.
+    # Required on Ubuntu 24 where gcc-14 ld --as-needed would otherwise drop it.
+    target_link_libraries(ocr_triage PUBLIC m)
 endif()
 
 if(OCR_TRIAGE_WITH_JPEG)
