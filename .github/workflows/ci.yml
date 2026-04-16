@@ -47,3 +47,48 @@ jobs:
         if: matrix.os == 'windows-latest'
         working-directory: build
         run: .\Release\bench_raw.exe
+
+      # Synthetic A4 JPEG for the encoded bench. Generated on the fly so the
+      # repo stays small and the bench is reproducible. Text-heavy content so
+      # the triage verdict is positive (otherwise we'd be measuring the
+      # text-free short-circuit).
+      - name: Generate synthetic A4 JPEG (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python3 -m pip install --user --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          img = Image.new('RGB', (2480, 3508), 'white')
+          d = ImageDraw.Draw(img)
+          line = "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt"
+          for y in range(80, 3400, 38):
+              d.text((80, y), line, fill='black')
+          img.save('/tmp/test_a4.jpg', quality=75)
+          print(f"generated /tmp/test_a4.jpg ({img.size[0]}x{img.size[1]})")
+          PY
+
+      - name: Bench (encoded A4 JPEG, Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: ./bench_encoded /tmp/test_a4.jpg
+
+      # macOS also has ImageMagick preinstalled; run the encoded bench there
+      # too to give Apple-Silicon NEON libjpeg-turbo a number.
+      - name: Generate synthetic A4 JPEG (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          python3 -m pip install --user --quiet --break-system-packages Pillow || python3 -m pip install --user --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw
+          img = Image.new('RGB', (2480, 3508), 'white')
+          d = ImageDraw.Draw(img)
+          line = "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt"
+          for y in range(80, 3400, 38):
+              d.text((80, y), line, fill='black')
+          img.save('/tmp/test_a4.jpg', quality=75)
+          PY
+
+      - name: Bench (encoded A4 JPEG, macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: build
+        run: ./bench_encoded /tmp/test_a4.jpg
